@@ -1,0 +1,32 @@
+---
+- name: Upgrade BIG-IP software
+  hosts: lb
+  connection: local
+  gather_facts: False
+
+  vars:
+    install_no_reboot: true
+    
+
+    provider:
+      password: "{{ bigip_password }}"
+      server: "{{ ansible_host }}"
+      user: "{{ bigip_username }}"
+      validate_certs: False
+
+
+  tasks:
+    - name: Task 1 - Get failover state
+      bigip_command:
+        commands:
+          - show ltm virtual my-virtual-server-443 | grep State
+        provider: "{{ provider }}" 
+      register: getvs_stat
+      args:
+        warn: false
+
+    - name: Displays the device info
+      debug:
+        var: getvs_stat.stdout
+      tags:
+        - verify

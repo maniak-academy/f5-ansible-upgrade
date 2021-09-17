@@ -5,7 +5,8 @@
   gather_facts: False
 
   vars:
-    install_no_reboot: true #set this value if you want to only install the OS on all F5.
+    install_no_reboot: true
+    
 
     provider:
       password: "{{ bigip_password }}"
@@ -25,6 +26,8 @@
           - show sys failover
         provider: "{{ provider }}" 
       register: failover_state
+      args:
+        warn: false
 
     - block:
       - name: Task 2 - Verify running configuration of the BIG-IP
@@ -32,7 +35,9 @@
           commands:
             - load sys config verify
           provider: "{{ provider }}" 
-  
+        args:
+          warn: false
+
       - name: Task 3 - Wait for configuration to finish loading
         wait_for:
           timeout: 45
@@ -84,6 +89,6 @@
         raw: curl -u "{{bigip_username}}":"{{bigip_password}}" -k https://"{{ansible_host}}":443/mgmt/tm/util/bash  -H "Content-type:application/json" -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
         ignore_errors: True
         register: cpcfg
-        when: install_no_reboot
+        when: not install_no_reboot
 
       when: failover_state.stdout is search("standby")
