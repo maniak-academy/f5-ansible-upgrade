@@ -3,12 +3,16 @@
   hosts: lb
   connection: local
   gather_facts: False
+
   vars:
+    install_no_reboot: true #set this value if you want to only install the OS on all F5.
+
     provider:
       password: "{{ bigip_password }}"
       server: "{{ ansible_host }}"
       user: "{{ bigip_username }}"
       validate_certs: False
+  
   vars_prompt:
     - name: version
       prompt: "Version and build from ISO"
@@ -80,6 +84,6 @@
         raw: curl -u "{{bigip_username}}":"{{bigip_password}}" -k https://"{{ansible_host}}":443/mgmt/tm/util/bash  -H "Content-type:application/json" -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
         ignore_errors: True
         register: cpcfg
-
+        when: install_no_reboot
 
       when: failover_state.stdout is search("standby")
