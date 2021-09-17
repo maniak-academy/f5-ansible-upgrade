@@ -1,3 +1,2 @@
 [lb]
 bigip1.local ansible_host=100.21.252.218 bigip_username=admin bigip_password=W3lcome098!
-bigip2.local ansible_host=54.200.35.32 bigip_username=admin bigip_password=W3lcome098!
