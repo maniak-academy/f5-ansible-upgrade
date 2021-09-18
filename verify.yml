@@ -25,20 +25,41 @@
       register: facts_result
 
     - name: Display all VIP's available
-      debug: "msg={{item.name}}"
+      debug: "msg={{item.availability_status}}"
       loop: "{{facts_result.virtual_servers}}"
       loop_control:
             label: "{{item.name}}"
 
-    - name: Store the vip name in a variable
+
+    - name: DISPLAY COMPLETE BIG-IP SYSTEM INFORMATION
+      debug:
+        var: facts_result
+    - local_action:
+        module: copy
+        content: "{{ facts_result.virtual_servers | to_nice_json  }}"
+        dest: virtual-servers-outputs.yml
+
+    - name: Query BIG-IP facts
+      bigip_device_facts:
+        gather_subset:
+         - virtual-servers
+        provider: "{{provider}}"
+      register: bigip_facts
+
+    - debug: msg="{{bigip_facts.virtual_servers}}"
+
+    - name: "Show relevant information"
       set_fact:
-        first_vip_name: "{{facts_result.virtual_servers[1].name}}"
- 
-    - name: Display all status attached to a VIP "name={{first_vip_name}}"
-      debug: "msg={{item}}"
-      loop: "{{facts_result.virtual_servers | json_query(query_string)}}"
+        result: "{{bigip_facts.virtual_servers | json_query(query_string) }}"
       vars:
-        query_string: "[?name=='{{first_vip_name}}'].availability_status"
+        query_string: "[*].{Name: name,Virtual: full_path,Status: availability_status,Pool: default_pool}"
 
 
+
+    - local_action:
+        module: copy
+        content: "{{ query_string }}"
+        dest: virtual-servers-outputs2.yml
     
+
+  #https://devcentral.f5.com/s/articles/Parsing-complex-BIG-IP-json-structures-made-easy-with-Ansible-filters-like-jsonquery
