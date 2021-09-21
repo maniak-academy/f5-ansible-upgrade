@@ -29,7 +29,7 @@ Clone the following plabook or just copy and paste it.
 
 To excute playbook run the following command 
 ```
-ansible-playbook -i inventory/hosts upgrade_bigip.yaml -vvv
+ansible-playbook -i inventory/hosts upgrade_bigip.yaml
 ```
 * note when it asks you to select the version just type the number ex. 15.1.3-0.0.11
 
