@@ -7,7 +7,7 @@
   vars:
     install_no_reboot: false #Set to false if you want automatically upgrade
     bigip_license: "XXXX-XXXX-XXXX-XXX-XXX" #F5 license
-    cancelprecheck: false #F5 precheck only works in version 13.x+ 
+    cancelprecheck: false #F5 precheck 
     licencecheck: false #Set to True if you want to relicense the f5, FYI services do restart
 
     provider:
@@ -136,43 +136,3 @@
 
     # To perform install only on all devices comment this out.
       when: failover_state.stdout is search("active")
-
-    - name: "Post Check 0: Wait for the F5 device to come back online active"
-      wait_for:
-        port: 22
-        delay: 400
-      when: not install_no_reboot
-
-
-    #Create a Post check of F5 Virtual Server Status
-    - name: "Post-Check 1: Grab the Virtual Server Status"
-      bigip_device_facts:
-        gather_subset:
-        - virtual-servers
-        provider: "{{provider}}"
-      register: bigip_facts_post
-      when: not cancelprecheck
-
-    - name: "Post-Check 2: Capture the Virtual Server stats in a .json file"
-      set_fact:
-        resultpost: "{{bigip_facts_post.virtual_servers | json_query(query_string) }}"
-      vars:
-        query_string: "[*].{Name: name, Status: availability_status,Full_Path: full_path,Destination: destination_address,Destination_Port: destination_port, Protocol: protocol,Pool: default_pool,Persistance: persistence_profile, Status_Reason: status_reason }"
-      when: not cancelprecheck
-
-    - debug: "msg={{resultpost}}"  # You can comment this out if you dont want to see the output
-      when: not cancelprecheck
-
-    - local_action:
-        module: copy
-        content: "{{ result }}"
-        dest: "outputs/post-{{ansible_host}}-virtual-servers-outputs.json"
-      when: not cancelprecheck
-
-    - name: "Post-Check 3: Generate F5 Virtual Server Status .html Page"
-      template:
-        src: ./report/templates/report.j2
-        dest: ./report/post-check-f5.html
-      delegate_to: localhost
-      run_once: true
-      when: not cancelprecheck
