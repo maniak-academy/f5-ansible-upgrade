@@ -129,7 +129,7 @@
           - verify
 
       - name: "Task 11: Copy existing config from Active Partition to New Parition"    
-        raw: curl -u "{{bigip_username}}":"{{bigip_password}}" -k https://"{{ansible_host}}":443/mgmt/tm/util/bash  -H "Content-type:application/json" -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
+        raw: curl -u "{{ansible_user}}":"{{ansible_ssh_pass}}" -k https://"{{ansible_host}}":443/mgmt/tm/util/bash  -H "Content-type:application/json" -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
         ignore_errors: True
         register: cpcfg
         when: not install_no_reboot
