@@ -1,0 +1,130 @@
+---
+- name: F5 BIG-IPS 
+  hosts: lb
+  connection: local
+  gather_facts: False
+
+  vars:
+    install_no_reboot: true #Set to false if you do not want automatically upgrade
+    bigip_license: true #set to false if you want to relicense the f5, FYI services do restart
+
+    provider:
+      password: "{{ ansible_ssh_pass }}"
+      server: "{{ ansible_host }}"
+      user: "{{ ansible_user }}"
+      validate_certs: False
+  
+  vars_prompt:
+    - name: version
+      prompt: "Version and build from ISO"
+      private: no
+
+  tasks:
+    
+    #Create a Pre check of F5 Virtual Server Status
+    - name: "Pre-Check 1: Grab the Virtual Server Status"
+      bigip_device_facts:
+        gather_subset:
+         - virtual-servers
+        provider: "{{provider}}"
+      register: bigip_facts
+
+    - name: "Pre-Check 2: Capture the Virtual Server stats in a .json file"
+      set_fact:
+        result: "{{bigip_facts.virtual_servers | json_query(query_string) }}"
+      vars:
+        query_string: "[*].{Name: name, Status: availability_status,Full_Path: full_path,Destination: destination_address,Destination_Port: destination_port, Protocol: protocol,Pool: default_pool,Persistance: persistence_profile, Status_Reason: status_reason }"
+
+    - debug: "msg={{result}}"  # You can comment this out if you dont want to see the output
+
+    - local_action:
+        module: copy
+        content: "{{ result }}"
+        dest: "outputs/{{ansible_host}}-virtual-servers-outputs.json"
+
+    - name: "Pre-Check 3: Generate F5 Virtual Server Status .html Page"
+      template:
+        src: report.j2
+        dest: pre-check-f5.html
+      delegate_to: localhost
+      run_once: true
+    
+    - name: "Task 1: Get failover State"
+      bigip_command:
+        commands:
+          - show sys failover
+        provider: "{{ provider }}" 
+      register: failover_state
+      args:
+        warn: false
+
+    - block:
+      - name: "Task 2: Verify running configuration of the BIG-IP"
+        bigip_command:
+          commands:
+            - load sys config verify
+          provider: "{{ provider }}" 
+        args:
+          warn: false
+
+      - name: "Task 3: Wait for configuration to be verified loading"
+        wait_for:
+          timeout: 45
+        delegate_to: localhost
+
+      - name: "Task 4: Capture current timestamp"
+        command: date "+%H%M%S-%m%d%y"
+        register: date
+
+      - name: "Task 5: Generate F5 Back - Download a new UCS file"
+        bigip_ucs_fetch:
+          src: "{{ inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"
+          dest: "{{ 'files/' + inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"
+          provider: "{{ provider }}"
+        delegate_to: localhost
+
+      - name: "Task 6: License/Relicense the F5 BIGIP"
+        bigip_device_license:
+          license_key: "{{bigip_license}}"
+          provider: "{{ provider }}"
+        delegate_to: localhost
+        when: not licencecheck
+
+      - name: "Task 7: Upload image to the BIG-IP"
+        bigip_software_image:
+         image: "{{ 'files/BIGIP-' + version  + '.iso' }}"
+         provider: "{{ provider }}"
+        delegate_to: localhost
+
+      - name: "Task 8: Install BIG-IP Software to the Secondary Parition"
+        bigip_software_install:
+          image: "{{ 'BIGIP-' + version  + '.iso' }}"
+          state: installed
+          volume: "HD1.2"
+          provider: "{{ provider }}"
+        delegate_to: localhost
+        async: 45
+        poll: 0
+
+      - name: "Task 9: Gather system volume"
+        bigip_device_info:
+          gather_subset: 
+            - software-volumes
+          provider: "{{ provider }}"
+        register: bigip_software_install
+        tags:
+          - verify
+
+      - name: "Task 10: Displays software installation"
+        debug:
+          var: bigip_software_install.software_volumes
+        tags:
+          - verify
+
+      - name: "Task 11: Copy existing config from Active Partition to New Parition"    
+        raw: curl -u "{{bigip_username}}":"{{bigip_password}}" -k https://"{{ansible_host}}":443/mgmt/tm/util/bash  -H "Content-type:application/json" -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
+        ignore_errors: True
+        register: cpcfg
+        when: not install_no_reboot
+
+      when: failover_state.stdout is search("standby")
