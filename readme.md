@@ -2,6 +2,7 @@
 
 The following playbook will upgrade your F5 device automatically 
 
+* Generate a Pre Check on the existing Virtual Server Status
 * Checks the failover state of a BIG-IP system {starts with standby}
 * Prepares the BIG-IP system for an upgrade
 * Performs load sys config verify

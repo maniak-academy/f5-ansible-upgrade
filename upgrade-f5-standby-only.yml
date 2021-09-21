@@ -5,8 +5,10 @@
   gather_facts: False
 
   vars:
-    install_no_reboot: true #Set to false if you do not want automatically upgrade
-    bigip_license: true #set to false if you want to relicense the f5, FYI services do restart
+    install_no_reboot: false #Set to false if you do not want automatically upgrade
+    bigip_license: "XXXX-XXXX-XXXX-XXX-XXX" #F5 license
+    cancelprecheck: false #F5 precheck only works in version 13.x+ 
+    licencecheck: false #Set to True if you want to relicense the f5, FYI services do restart
 
     provider:
       password: "{{ ansible_ssh_pass }}"
@@ -28,27 +30,32 @@
          - virtual-servers
         provider: "{{provider}}"
       register: bigip_facts
+      when: not cancelprecheck
 
     - name: "Pre-Check 2: Capture the Virtual Server stats in a .json file"
       set_fact:
         result: "{{bigip_facts.virtual_servers | json_query(query_string) }}"
       vars:
         query_string: "[*].{Name: name, Status: availability_status,Full_Path: full_path,Destination: destination_address,Destination_Port: destination_port, Protocol: protocol,Pool: default_pool,Persistance: persistence_profile, Status_Reason: status_reason }"
+      when: not cancelprecheck
 
     - debug: "msg={{result}}"  # You can comment this out if you dont want to see the output
+      when: not cancelprecheck
 
     - local_action:
         module: copy
         content: "{{ result }}"
-        dest: "outputs/{{ansible_host}}-virtual-servers-outputs.json"
+        dest: "outputs/pre-{{ansible_host}}-virtual-servers-outputs.json"
+      when: not cancelprecheck
 
     - name: "Pre-Check 3: Generate F5 Virtual Server Status .html Page"
       template:
-        src: report.j2
-        dest: pre-check-f5.html
+        src: ./report/templates/report.j2
+        dest: ./report/pre-check-f5.html
       delegate_to: localhost
       run_once: true
-    
+      when: not cancelprecheck
+
     - name: "Task 1: Get failover State"
       bigip_command:
         commands:
@@ -69,7 +76,7 @@
 
       - name: "Task 3: Wait for configuration to be verified loading"
         wait_for:
-          timeout: 45
+          timeout: 30
         delegate_to: localhost
 
       - name: "Task 4: Capture current timestamp"
@@ -88,7 +95,7 @@
           license_key: "{{bigip_license}}"
           provider: "{{ provider }}"
         delegate_to: localhost
-        when: not licencecheck
+        when: licencecheck
 
       - name: "Task 7: Upload image to the BIG-IP"
         bigip_software_image:
@@ -127,4 +134,48 @@
         register: cpcfg
         when: not install_no_reboot
 
-      when: failover_state.stdout is search("standby")
+    # To perform install only on all devices comment this out.
+      when: failover_state.stdout is search("active")
+
+    - name: Wait for the F5 device to become active
+      wait_for:
+        port: 22
+        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+        search_regex: OpenSSH
+        delay: 300
+      connection: local
+      when: not install_no_reboot
+
+
+    #Create a Post check of F5 Virtual Server Status
+    - name: "Post-Check 1: Grab the Virtual Server Status"
+      bigip_device_facts:
+        gather_subset:
+        - virtual-servers
+        provider: "{{provider}}"
+      register: bigip_facts_post
+      when: not cancelprecheck
+
+    - name: "Post-Check 2: Capture the Virtual Server stats in a .json file"
+      set_fact:
+        resultpost: "{{bigip_facts_post.virtual_servers | json_query(query_string) }}"
+      vars:
+        query_string: "[*].{Name: name, Status: availability_status,Full_Path: full_path,Destination: destination_address,Destination_Port: destination_port, Protocol: protocol,Pool: default_pool,Persistance: persistence_profile, Status_Reason: status_reason }"
+      when: not cancelprecheck
+
+    - debug: "msg={{resultpost}}"  # You can comment this out if you dont want to see the output
+      when: not cancelprecheck
+
+    - local_action:
+        module: copy
+        content: "{{ result }}"
+        dest: "outputs/post-{{ansible_host}}-virtual-servers-outputs.json"
+      when: not cancelprecheck
+
+    - name: "Post-Check 3: Generate F5 Virtual Server Status .html Page"
+      template:
+        src: ./report/templates/report.j2
+        dest: ./report/post-check-f5.html
+      delegate_to: localhost
+      run_once: true
+      when: not cancelprecheck

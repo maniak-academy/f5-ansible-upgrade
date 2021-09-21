@@ -1,5 +1,8 @@
 files/BIGIP*
+files/big*
 files/f*
+report/post*
+report/pre*
 
 # Local .terraform directories
 **/.terraform/*
