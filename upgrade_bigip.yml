@@ -5,7 +5,7 @@
   gather_facts: False
 
   vars:
-    install_no_reboot: false #Set to false if you do not want automatically upgrade
+    install_no_reboot: false #Set to false if you want automatically upgrade
     bigip_license: "XXXX-XXXX-XXXX-XXX-XXX" #F5 license
     cancelprecheck: false #F5 precheck only works in version 13.x+ 
     licencecheck: false #Set to True if you want to relicense the f5, FYI services do restart
@@ -137,13 +137,10 @@
     # To perform install only on all devices comment this out.
       when: failover_state.stdout is search("active")
 
-    - name: Wait for the F5 device to become active
+    - name: "Post Check 0: Wait for the F5 device to come back online active"
       wait_for:
         port: 22
-        host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
-        search_regex: OpenSSH
-        delay: 300
-      connection: local
+        delay: 400
       when: not install_no_reboot
 
 
