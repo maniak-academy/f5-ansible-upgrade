@@ -18,6 +18,8 @@ Which version does it work with
 | v14 | pass | pass | pass | pass |
 | v15 | pass | pass | pass | pass |
 | v16 | pass | pass | pass | pass |
+| v17 | pass | pass | pass | pass |
+
 
 # How to use
 Clone the following plabook or just copy and paste it.
