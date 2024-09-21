@@ -23,17 +23,17 @@ Which version does it work with
 
 # How to use
 Clone the following plabook or just copy and paste it.
-* edit the host file in the inventory folder to include your F5s
-* Note: I recommend you dont store your passwords in the file, use ansible vault (maybe i will add this into this one later)
+* Edit the host file in the inventory folder to include your F5s and the license keys for them
+* Credentials have been removed from the inventory
 * Download you desired version of F5 and place it in the files folder
 
 # Execute playbook 
 
 To excute playbook run the following command 
 ```
-ansible-playbook -i inventory/hosts upgrade_bigip.yaml
+ansible-playbook your_playbook.yml -e "ansible_user=admin ansible_ssh_pass=W3lcome098! version=17.1.1.3-0.0.5"
 ```
-* note when it asks you to select the version just type the number ex. 15.1.3-0.0.11
+* note when it asks you to select the version just type the number ex. 17.1.1.3-0.0.5
 
 
 ## Notes

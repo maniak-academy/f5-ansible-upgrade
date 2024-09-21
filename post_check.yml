@@ -3,39 +3,39 @@
   hosts: lb
   connection: local
   gather_facts: False
+  collections:
+    - f5networks.f5_modules
 
   vars:
-    cancelprecheck: false #F5 postcheck 
+    cancelprecheck: false  # F5 postcheck 
 
     provider:
       password: "{{ ansible_ssh_pass }}"
       server: "{{ ansible_host }}"
       user: "{{ ansible_user }}"
       validate_certs: False
-  
 
   tasks:
-    
-    #Create a Post check of F5 Virtual Server Status
     - name: "Post-Check 1: Grab the Virtual Server Status"
-      bigip_device_facts:
+      bigip_device_info:
         gather_subset:
-        - virtual-servers
-        provider: "{{provider}}"
+          - virtual-servers
+        provider: "{{ provider }}"
       register: bigip_facts_post
 
     - name: "Post-Check 2: Capture the Virtual Server stats in a .json file"
       set_fact:
-        resultpost: "{{bigip_facts_post.virtual_servers | json_query(query_string) }}"
+        resultpost: "{{ bigip_facts_post.virtual_servers | json_query(query_string) }}"
       vars:
-        query_string: "[*].{Name: name, Status: availability_status,Full_Path: full_path,Destination: destination_address,Destination_Port: destination_port, Protocol: protocol,Pool: default_pool,Persistance: persistence_profile, Status_Reason: status_reason }"
+        query_string: "[*].{Name: name, Status: availability_status, Full_Path: full_path, Destination: destination_address, Destination_Port: destination_port, Protocol: protocol, Pool: default_pool, Persistence: persistence_profile, Status_Reason: status_reason }"
 
-    - debug: "msg={{resultpost}}"  # You can comment this out if you dont want to see the output
+    - debug:
+        msg: "{{ resultpost }}"  # You can comment this out if you don't want to see the output
 
     - local_action:
         module: copy
         content: "{{ resultpost }}"
-        dest: "outputs/post-{{ansible_host}}-virtual-servers-outputs.json"
+        dest: "outputs/post-{{ ansible_host }}-virtual-servers-outputs.json"
 
     - name: "Post-Check 3: Generate F5 Virtual Server Status .html Page"
       template:

@@ -3,136 +3,169 @@
   hosts: lb
   connection: local
   gather_facts: False
+  collections:
+    - f5networks.f5_modules
 
+  # Variables that control the behavior of the playbook
   vars:
-    install_no_reboot: false #Set to false if you want automatically upgrade
-    bigip_license: "XXXX-XXXX-XXXX-XXX-XXX" #F5 license
-    cancelprecheck: false #F5 precheck 
-    licencecheck: false #Set to True if you want to relicense the f5, FYI services do restart
+    install_no_reboot: false     # Set to false to automatically reboot after upgrade
+    cancelprecheck: false        # Set to true to skip the pre-check tasks
+    licencecheck: false          # Set to true to relicense the F5 device
 
+    # Provider dictionary containing connection details for the F5 device
     provider:
-      password: "{{ ansible_ssh_pass }}"
-      server: "{{ ansible_host }}"
-      user: "{{ ansible_user }}"
-      validate_certs: False
-  
+      password: "{{ ansible_ssh_pass }}"  # Password for the F5 device (prompted)
+      server: "{{ ansible_host }}"        # Hostname or IP address of the F5 device
+      user: "{{ ansible_user }}"          # Username for the F5 device (prompted)
+      validate_certs: False               # Disable SSL certificate validation
+
+  # Prompt the user for credentials and version information
   vars_prompt:
+    - name: ansible_user
+      prompt: "Enter the username for the F5 devices"
+      private: no                       # Input will be displayed (not hidden)
+
+    - name: ansible_ssh_pass
+      prompt: "Enter the password for the F5 devices"
+      private: yes                      # Input will be hidden (for security)
+
     - name: version
       prompt: "Version and build from ISO"
-      private: no
+      private: no                       # Input will be displayed
 
   tasks:
-    
-    #Create a Pre check of F5 Virtual Server Status
+    # Pre-Check: Gather the virtual server status from the F5 device
     - name: "Pre-Check 1: Grab the Virtual Server Status"
-      bigip_device_facts:
+      bigip_device_info:
         gather_subset:
-         - virtual-servers
-        provider: "{{provider}}"
-      register: bigip_facts
-      when: not cancelprecheck
+          - virtual-servers            # Gather information about virtual servers
+        provider: "{{ provider }}"     # Use the provider dictionary for connection
+      register: bigip_facts            # Register the result as 'bigip_facts'
+      when: not cancelprecheck         # Skip if 'cancelprecheck' is true
 
+    # Process and store the virtual server information
     - name: "Pre-Check 2: Capture the Virtual Server stats in a .json file"
       set_fact:
-        result: "{{bigip_facts.virtual_servers | json_query(query_string) }}"
+        result: "{{ bigip_facts.virtual_servers | json_query(query_string) }}"
       vars:
-        query_string: "[*].{Name: name, Status: availability_status,Full_Path: full_path,Destination: destination_address,Destination_Port: destination_port, Protocol: protocol,Pool: default_pool,Persistance: persistence_profile, Status_Reason: status_reason }"
-      when: not cancelprecheck
+        # Define the data structure to extract using JMESPath query
+        query_string: "[*].{Name: name, Status: availability_status, Full_Path: full_path, Destination: destination_address, Destination_Port: destination_port, Protocol: protocol, Pool: default_pool, Persistence: persistence_profile, Status_Reason: status_reason }"
+      when: not cancelprecheck         # Skip if 'cancelprecheck' is true
 
-    - debug: "msg={{result}}"  # You can comment this out if you dont want to see the output
-      when: not cancelprecheck
+    # Optional: Output the virtual server information for debugging purposes
+    - debug:
+        msg: "{{ result }}"            # Display the 'result' variable
+      when: not cancelprecheck         # Skip if 'cancelprecheck' is true
 
+    # Save the virtual server information to a JSON file
     - local_action:
         module: copy
-        content: "{{ result }}"
-        dest: "outputs/pre-{{ansible_host}}-virtual-servers-outputs.json"
-      when: not cancelprecheck
+        content: "{{ result }}"        # Content to write to the file
+        dest: "outputs/pre-{{ ansible_host }}-virtual-servers-outputs.json"
+      when: not cancelprecheck         # Skip if 'cancelprecheck' is true
 
+    # Generate an HTML report of the virtual server status
     - name: "Pre-Check 3: Generate F5 Virtual Server Status .html Page"
       template:
-        src: ./report/templates/report.j2
-        dest: ./report/pre-check-f5.html
-      delegate_to: localhost
-      run_once: true
-      when: not cancelprecheck
+        src: ./report/templates/report.j2      # Jinja2 template source file
+        dest: ./report/pre-check-f5.html       # Destination HTML file
+      delegate_to: localhost                   # Run this task on the local machine
+      run_once: true                           # Run only once, not per host
+      when: not cancelprecheck                 # Skip if 'cancelprecheck' is true
 
+    # Task 1: Retrieve the failover state of the F5 device
     - name: "Task 1: Get failover State"
       bigip_command:
         commands:
-          - show sys failover
-        provider: "{{ provider }}" 
-      register: failover_state
+          - show sys failover                  # Command to execute on the F5 device
+        provider: "{{ provider }}"             # Use the provider dictionary for connection
+      register: failover_state                 # Register the output as 'failover_state'
       args:
-        warn: false
+        warn: false                            # Suppress warnings
+                                               # (e.g., about missing 'rc' return codes)
 
+    # Execute the following block only if the device is active
     - block:
-      - name: "Task 2: Verify running configuration of the BIG-IP"
-        bigip_command:
-          commands:
-            - load sys config verify
-          provider: "{{ provider }}" 
-        args:
-          warn: false
+        # Task 2: Verify the running configuration of the BIG-IP device
+        - name: "Task 2: Verify running configuration of the BIG-IP"
+          bigip_command:
+            commands:
+              - load sys config verify         # Verify the system configuration
+            provider: "{{ provider }}"
+          args:
+            warn: false                        # Suppress warnings
 
-      - name: "Task 3: Wait for configuration to be verified loading"
-        wait_for:
-          timeout: 30
-        delegate_to: localhost
+        # Task 3: Wait for the configuration verification to complete
+        - name: "Task 3: Wait for configuration to be verified loading"
+          wait_for:
+            timeout: 30                        # Wait for up to 30 seconds
+          delegate_to: localhost               # Run this task on the local machine
 
-      - name: "Task 4: Capture current timestamp"
-        command: date "+%H%M%S-%m%d%y"
-        register: date
+        # Task 4: Capture the current timestamp for file naming
+        - name: "Task 4: Capture current timestamp"
+          command: date "+%H%M%S-%m%d%y"       # Command to get the formatted date
+          register: date                       # Register the output as 'date'
 
-      - name: "Task 5: Generate F5 Back - Download a new UCS file"
-        bigip_ucs_fetch:
-          src: "{{ inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"
-          dest: "{{ 'files/' + inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"
-          provider: "{{ provider }}"
-        delegate_to: localhost
+        # Task 5: Create and download a UCS backup file from the F5 device
+        - name: "Task 5: Generate F5 Backup - Download a new UCS file"
+          bigip_ucs_fetch:
+            src: "{{ inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"  # UCS file name on the F5 device
+            dest: "{{ 'files/' + inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"  # Destination path
+            provider: "{{ provider }}"
+          delegate_to: localhost               # Run this task on the local machine
 
-      - name: "Task 6: License/Relicense the F5 BIGIP"
-        bigip_device_license:
-          license_key: "{{bigip_license}}"
-          provider: "{{ provider }}"
-        delegate_to: localhost
-        when: licencecheck
+        # Task 6: License or relicense the F5 BIG-IP device
+        - name: "Task 6: License/Relicense the F5 BIGIP"
+          bigip_device_license:
+            license_key: "{{ bigip_license }}"  # License key from inventory
+            provider: "{{ provider }}"
+          delegate_to: localhost               # Run this task on the local machine
+          when: licencecheck                   # Execute only if 'licencecheck' is true
 
-      - name: "Task 7: Upload image to the BIG-IP"
-        bigip_software_image:
-         image: "{{ 'files/BIGIP-' + version  + '.iso' }}"
-         provider: "{{ provider }}"
-        delegate_to: localhost
+        # Task 7: Upload the software image to the F5 device
+        - name: "Task 7: Upload image to the BIG-IP"
+          bigip_software_image:
+            image: "{{ 'files/BIGIP-' + version  + '.iso' }}"  # Path to the ISO image file
+            provider: "{{ provider }}"
+          delegate_to: localhost               # Run this task on the local machine
 
-      - name: "Task 8: Install BIG-IP Software to the Secondary Parition"
-        bigip_software_install:
-          image: "{{ 'BIGIP-' + version  + '.iso' }}"
-          state: installed
-          volume: "HD1.2"
-          provider: "{{ provider }}"
-        delegate_to: localhost
-        async: 45
-        poll: 0
+        # Task 8: Install the BIG-IP software to the secondary partition
+        - name: "Task 8: Install BIG-IP Software to the Secondary Partition"
+          bigip_software_install:
+            image: "{{ 'BIGIP-' + version  + '.iso' }}"  # Name of the ISO image on the F5 device
+            state: installed                             # Desired state is 'installed'
+            volume: "HD1.2"                              # Install to partition 'HD1.2'
+            provider: "{{ provider }}"
+          delegate_to: localhost
+          async: 45                                      # Allow up to 45 seconds for the task to start
+          poll: 0                                        # Don't wait for the task to complete (run asynchronously)
 
-      - name: "Task 9: Gather system volume"
-        bigip_device_info:
-          gather_subset: 
-            - software-volumes
-          provider: "{{ provider }}"
-        register: bigip_software_install
-        tags:
-          - verify
+        # Task 9: Gather information about software volumes on the F5 device
+        - name: "Task 9: Gather system volume"
+          bigip_device_info:
+            gather_subset: 
+              - software-volumes                 # Gather software volume information
+            provider: "{{ provider }}"
+          register: bigip_software_install       # Register the result for verification
+          tags:
+            - verify                             # Tag for selective execution
 
-      - name: "Task 10: Displays software installation"
-        debug:
-          var: bigip_software_install.software_volumes
-        tags:
-          - verify
+        # Task 10: Display the software installation details
+        - name: "Task 10: Displays software installation"
+          debug:
+            var: bigip_software_install.software_volumes  # Output the software volume info
+          tags:
+            - verify                             # Tag for selective execution
 
-      - name: "Task 11: Copy existing config from Active Partition to New Parition"    
-        raw: curl -u "{{ansible_user}}":"{{ansible_ssh_pass}}" -k https://"{{ansible_host}}":443/mgmt/tm/util/bash  -H "Content-type:application/json" -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
-        ignore_errors: True
-        register: cpcfg
-        when: not install_no_reboot
+        # Task 11: Copy the existing configuration to the new partition and reboot
+        - name: "Task 11: Copy existing config from Active Partition to New Partition"
+          raw: |
+            curl -u "{{ ansible_user }}":"{{ ansible_ssh_pass }}" -k https://"{{ ansible_host }}":443/mgmt/tm/util/bash \
+            -H "Content-type:application/json" \
+            -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
+          ignore_errors: True                   # Ignore errors (e.g., due to reboot)
+          register: cpcfg                       # Register the output as 'cpcfg'
+          when: not install_no_reboot           # Skip if 'install_no_reboot' is true
 
-    # To perform install only on all devices comment this out.
+    # Execute the block only if the device is active (failover state is 'active')
       when: failover_state.stdout is search("active")

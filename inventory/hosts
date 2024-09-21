@@ -1,3 +1,2 @@
 [lb]
-bigip1.maniak.academy ansible_host=54.201.122.88 ansible_user=awsuser private_ip=54.201.122.88 ansible_ssh_pass=VsF6OnbTPd1Gu_h0
-bigip2.maniak.academy ansible_host=52.88.178.80 ansible_user=awsuser private_ip=52.88.178.80 ansible_ssh_pass=VsF6OnbTPd1Gu_h0
+f5.maniak.academy ansible_host=172.16.10.141 bigip_license=UBIYF-KETZM-JNOVE-RQYXR-DZRKGNZ
