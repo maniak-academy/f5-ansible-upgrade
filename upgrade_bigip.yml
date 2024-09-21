@@ -11,7 +11,7 @@
     install_no_reboot: false          # Set to false to automatically reboot after upgrade
     cancelprecheck: false             # Set to true to skip the pre-check tasks
     licencecheck: false               # Set to true to relicense the F5 device, note access to F5 API is required
-    ignore_failover_state: false      # Set to true to ignore failover state and proceed with upgrade
+    ignore_failover_state: true      # Set to true to ignore failover state and proceed with upgrade
 
     # Provider dictionary containing connection details for the F5 device
     provider:
