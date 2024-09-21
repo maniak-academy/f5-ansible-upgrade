@@ -1,2 +1,2 @@
 [lb]
-f5.maniak.academy ansible_host=172.16.10.141 bigip_license=UBIYF-KETZM-JNOVE-RQYXR-DZRKGNZ
+f5.maniak.academy ansible_host=172.16.10.141 install_volume=HD1.2 bigip_license=UBIYF-KETZM-JNOVE-RQYXR-DZRKGNZ

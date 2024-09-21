@@ -10,9 +10,8 @@
   vars:
     install_no_reboot: false          # Set to false to automatically reboot after upgrade
     cancelprecheck: false             # Set to true to skip the pre-check tasks
-    licencecheck: false               # Set to true to relicense the F5 device, note access to f5 API is required
+    licencecheck: false               # Set to true to relicense the F5 device, note access to F5 API is required
     ignore_failover_state: false      # Set to true to ignore failover state and proceed with upgrade
-    install_volume: "HD1.2"           # Specify the volume to install the software
 
     # Provider dictionary containing connection details for the F5 device
     provider:
@@ -90,7 +89,7 @@
       debug:
         var: failover_state.stdout_lines
 
-    # Execute the following block regardless of failover state if ignore_failover_state is true
+    # Execute the following block based on failover state or ignore_failover_state variable
     - block:
         # Task 2: Verify running configuration of the BIG-IP device
         - name: "Task 2: Verify running configuration of the BIG-IP"
@@ -168,7 +167,7 @@
           raw: |
             curl -u "{{ ansible_user }}":"{{ ansible_ssh_pass }}" -k https://"{{ ansible_host }}":443/mgmt/tm/util/bash \
             -H "Content-type:application/json" \
-            -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=$(tmsh show sys software status | grep Active | awk '{print $1}') --reboot {{ install_volume }}'\"}"
+            -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=$(tmsh show sys software status | grep Active | awk '{print \$1}') --reboot {{ install_volume }}'\"}"
           ignore_errors: True                   # Ignore errors (e.g., due to reboot)
           register: cpcfg                       # Register the output as 'cpcfg'
           when: not install_no_reboot           # Skip if 'install_no_reboot' is true
