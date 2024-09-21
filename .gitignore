@@ -3,6 +3,7 @@ files/big*
 files/f*
 report/post*
 report/pre*
+fake*
 
 # Local .terraform directories
 **/.terraform/*
