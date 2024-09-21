@@ -1,5 +1,5 @@
 ---
-- name: F5 BIG-IPS 
+- name: F5 BIG-IP Upgrade Playbook
   hosts: lb
   connection: local
   gather_facts: False
@@ -8,9 +8,11 @@
 
   # Variables that control the behavior of the playbook
   vars:
-    install_no_reboot: false     # Set to false to automatically reboot after upgrade
-    cancelprecheck: false        # Set to true to skip the pre-check tasks
-    licencecheck: false          # Set to true to relicense the F5 device
+    install_no_reboot: false          # Set to false to automatically reboot after upgrade
+    cancelprecheck: false             # Set to true to skip the pre-check tasks
+    licencecheck: false               # Set to true to relicense the F5 device, note access to f5 API is required
+    ignore_failover_state: false      # Set to true to ignore failover state and proceed with upgrade
+    install_volume: "HD1.2"           # Specify the volume to install the software
 
     # Provider dictionary containing connection details for the F5 device
     provider:
@@ -30,7 +32,7 @@
       private: yes                      # Input will be hidden (for security)
 
     - name: version
-      prompt: "Version and build from ISO"
+      prompt: "Version and build from ISO (e.g., 17.1.1.3)"
       private: no                       # Input will be displayed
 
   tasks:
@@ -82,11 +84,15 @@
       register: failover_state                 # Register the output as 'failover_state'
       args:
         warn: false                            # Suppress warnings
-                                               # (e.g., about missing 'rc' return codes)
 
-    # Execute the following block only if the device is active
+    # Debug Task: Output failover_state.stdout_lines
+    - name: "Debug: Output failover_state.stdout_lines"
+      debug:
+        var: failover_state.stdout_lines
+
+    # Execute the following block regardless of failover state if ignore_failover_state is true
     - block:
-        # Task 2: Verify the running configuration of the BIG-IP device
+        # Task 2: Verify running configuration of the BIG-IP device
         - name: "Task 2: Verify running configuration of the BIG-IP"
           bigip_command:
             commands:
@@ -109,8 +115,8 @@
         # Task 5: Create and download a UCS backup file from the F5 device
         - name: "Task 5: Generate F5 Backup - Download a new UCS file"
           bigip_ucs_fetch:
-            src: "{{ inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"  # UCS file name on the F5 device
-            dest: "{{ 'files/' + inventory_hostname + '-' + date.stdout +  '-backup.ucs' }}"  # Destination path
+            src: "{{ inventory_hostname }}-{{ date.stdout }}-backup.ucs"  # UCS file name on the F5 device
+            dest: "files/{{ inventory_hostname }}-{{ date.stdout }}-backup.ucs"  # Destination path
             provider: "{{ provider }}"
           delegate_to: localhost               # Run this task on the local machine
 
@@ -125,47 +131,49 @@
         # Task 7: Upload the software image to the F5 device
         - name: "Task 7: Upload image to the BIG-IP"
           bigip_software_image:
-            image: "{{ 'files/BIGIP-' + version  + '.iso' }}"  # Path to the ISO image file
+            image: "files/BIGIP-{{ version }}.iso"  # Path to the ISO image file
             provider: "{{ provider }}"
           delegate_to: localhost               # Run this task on the local machine
 
-        # Task 8: Install the BIG-IP software to the secondary partition
-        - name: "Task 8: Install BIG-IP Software to the Secondary Partition"
+        # Task 8: Install BIG-IP Software to the Specified Partition
+        - name: "Task 8: Install BIG-IP Software to the Specified Partition"
           bigip_software_install:
-            image: "{{ 'BIGIP-' + version  + '.iso' }}"  # Name of the ISO image on the F5 device
-            state: installed                             # Desired state is 'installed'
-            volume: "HD1.2"                              # Install to partition 'HD1.2'
+            image: "BIGIP-{{ version }}.iso"   # Name of the ISO image on the F5 device
+            state: installed                   # Desired state is 'installed'
+            volume: "{{ install_volume }}"     # Install to the specified partition
             provider: "{{ provider }}"
           delegate_to: localhost
-          async: 45                                      # Allow up to 45 seconds for the task to start
-          poll: 0                                        # Don't wait for the task to complete (run asynchronously)
+          async: 45                            # Allow up to 45 seconds for the task to start
+          poll: 0                              # Don't wait for the task to complete (run asynchronously)
 
         # Task 9: Gather information about software volumes on the F5 device
         - name: "Task 9: Gather system volume"
           bigip_device_info:
             gather_subset: 
-              - software-volumes                 # Gather software volume information
+              - software-volumes               # Gather software volume information
             provider: "{{ provider }}"
-          register: bigip_software_install       # Register the result for verification
+          register: bigip_software_install     # Register the result for verification
           tags:
-            - verify                             # Tag for selective execution
+            - verify                           # Tag for selective execution
 
         # Task 10: Display the software installation details
         - name: "Task 10: Displays software installation"
           debug:
             var: bigip_software_install.software_volumes  # Output the software volume info
           tags:
-            - verify                             # Tag for selective execution
+            - verify                           # Tag for selective execution
 
         # Task 11: Copy the existing configuration to the new partition and reboot
         - name: "Task 11: Copy existing config from Active Partition to New Partition"
           raw: |
             curl -u "{{ ansible_user }}":"{{ ansible_ssh_pass }}" -k https://"{{ ansible_host }}":443/mgmt/tm/util/bash \
             -H "Content-type:application/json" \
-            -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=HD1.1 --reboot HD1.2'\"}"
+            -d "{\"command\":\"run\",\"utilCmdArgs\":\"-c 'cpcfg --source=$(tmsh show sys software status | grep Active | awk '{print $1}') --reboot {{ install_volume }}'\"}"
           ignore_errors: True                   # Ignore errors (e.g., due to reboot)
           register: cpcfg                       # Register the output as 'cpcfg'
           when: not install_no_reboot           # Skip if 'install_no_reboot' is true
 
-    # Execute the block only if the device is active (failover state is 'active')
-      when: failover_state.stdout is search("active")
+    # Execute the block based on failover state or ignore_failover_state variable
+      when: >
+        ignore_failover_state or
+        (failover_state.stdout_lines | select('search', '(?i)^\s*Status:\s*active') | list | length > 0)
